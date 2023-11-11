@@ -3,6 +3,10 @@ from dash import Dash, html, dcc
 import plotly.express as px
 import pandas as pd
 from nba_api.stats import endpoints
+import warnings
+
+# Suppress SettingWithCopyWarning
+warnings.simplefilter(action='ignore', category=pd.errors.SettingWithCopyWarning)
 
 # Initialize App
 external_stylesheets = ['https://codepen.io/chriddyp/pen/dZVMbK.css']
