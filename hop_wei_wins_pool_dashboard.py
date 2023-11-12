@@ -150,7 +150,7 @@ color_map = {
 }
 
 # Fetch NBA standings data
-standings_full = endpoints.leaguestandings.LeagueStandings().get_data_frames()[0]
+standings_full = endpoints.leaguestandings.LeagueStandings(timeout=60).get_data_frames()[0]
 
 # Limit to relevant columns
 col = ['TeamCity', 'TeamName', 'WINS', 'LOSSES']
@@ -176,7 +176,7 @@ standings = standings.merge(total_points, on='Owner')
 # Sort Standings
 standings = standings.sort_values(by=['TotalPoints', 'Owner'], ascending=False)
 
-gamelog_full = endpoints.LeagueGameLog().get_data_frames()[0]
+gamelog_full = endpoints.LeagueGameLog(timeout=60).get_data_frames()[0]
 gamelog = gamelog_full[['TEAM_ABBREVIATION', 'GAME_DATE', 'WL']]
 
 # Assign Wins Pool Owners
