@@ -8,6 +8,11 @@ import warnings
 # Suppress SettingWithCopyWarning
 warnings.simplefilter(action='ignore', category=pd.errors.SettingWithCopyWarning)
 
+# Setup proxy information
+username = 'sp6d8rmw2q'
+password = 'Dn5zyQy1zwhnjPLu91'
+proxy = f"http://{username}:{password}@gate.smartproxy.com:7000"
+
 # Initialize App
 external_stylesheets = ['https://codepen.io/chriddyp/pen/dZVMbK.css']
 app = Dash(__name__, external_stylesheets=external_stylesheets)
@@ -150,7 +155,7 @@ color_map = {
 }
 
 # Fetch NBA standings data
-standings_full = endpoints.leaguestandings.LeagueStandings(timeout=60).get_data_frames()[0]
+standings_full = endpoints.leaguestandings.LeagueStandings(proxy=proxy).get_data_frames()[0]
 
 # Limit to relevant columns
 col = ['TeamCity', 'TeamName', 'WINS', 'LOSSES']
@@ -176,7 +181,8 @@ standings = standings.merge(total_points, on='Owner')
 # Sort Standings
 standings = standings.sort_values(by=['TotalPoints', 'Owner'], ascending=False)
 
-gamelog_full = endpoints.LeagueGameLog(timeout=60).get_data_frames()[0]
+# Get gamelog
+gamelog_full = endpoints.LeagueGameLog(proxy=proxy).get_data_frames()[0]
 gamelog = gamelog_full[['TEAM_ABBREVIATION', 'GAME_DATE', 'WL']]
 
 # Assign Wins Pool Owners
