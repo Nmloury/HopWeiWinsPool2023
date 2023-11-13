@@ -1,5 +1,5 @@
 # Imports
-from dash import Dash, html, dcc
+from dash import Dash, html, dcc, callback, Output, Input
 import plotly.express as px
 import pandas as pd
 from nba_api.stats import endpoints
@@ -11,11 +11,7 @@ warnings.simplefilter(action='ignore', category=pd.errors.SettingWithCopyWarning
 # Setup proxy information
 username = 'sp6d8rmw2q'
 password = 'Dn5zyQy1zwhnjPLu91'
-proxy = f"http://{username}:{password}@gate.smartproxy.com:7000"
-
-# Initialize App
-external_stylesheets = ['https://codepen.io/chriddyp/pen/dZVMbK.css']
-app = Dash(__name__, external_stylesheets=external_stylesheets)
+proxy = f"https://{username}:{password}@gate.smartproxy.com:7000"
 
 # Create Team Owner Dict for wins pool
 owner_map = {
@@ -154,85 +150,11 @@ color_map = {
     'Wizards': '#002B5C'
 }
 
-# Fetch NBA standings data
-standings_full = endpoints.leaguestandings.LeagueStandings(proxy=proxy).get_data_frames()[0]
+# Initialize App
+external_stylesheets = ['https://codepen.io/chriddyp/pen/dZVMbK.css']
+app = Dash(__name__, external_stylesheets=external_stylesheets)
 
-# Limit to relevant columns
-col = ['TeamCity', 'TeamName', 'WINS', 'LOSSES']
-standings = standings_full[col]
-
-# Assign Wins Pool Owners
-standings['Owner'] = standings['TeamName'].map(owner_map)
-
-# Assign Wins Pool Owners
-standings['O/U'] = standings['TeamName'].map(ou_map)
-
-# Calculate Points Per Team
-standings['Points'] = standings.apply(lambda row: row['WINS'] + 2 * max(row['WINS'] - row['O/U'], 0), axis=1)
-
-# Drop Teams With No Owner
-standings = standings[standings['Owner'] != 'N/A']
-
-# Calculate Total Points Per Owner
-total_points = standings.groupby(['Owner'])['Points'].sum().reset_index()
-total_points.rename({'Points': 'TotalPoints'}, axis=1, inplace=True)
-standings = standings.merge(total_points, on='Owner')
-
-# Sort Standings
-standings = standings.sort_values(by=['TotalPoints', 'Owner'], ascending=False)
-
-# Get gamelog
-gamelog_full = endpoints.LeagueGameLog(proxy=proxy).get_data_frames()[0]
-gamelog = gamelog_full[['TEAM_ABBREVIATION', 'GAME_DATE', 'WL']]
-
-# Assign Wins Pool Owners
-gamelog['Owner'] = gamelog['TEAM_ABBREVIATION'].map(owner_map_2)
-
-# Wins Boolean
-gamelog['WinMask'] = gamelog['WL'] == 'W'
-
-# Change to Dates
-gamelog['GAME_DATE'] = pd.to_datetime(gamelog['GAME_DATE'])
-
-# Drop Teams With No Owner
-gamelog = gamelog[gamelog['Owner'] != 'N/A']
-
-# Pivot to get cumulative points
-gamelog_pivot = gamelog.pivot_table(index='GAME_DATE', columns='Owner', values='WinMask', aggfunc='sum').cumsum().reset_index()
-
-# Fill NA
-gamelog_pivot.fillna(method='ffill', inplace=True)
-gamelog_pivot.fillna(0, inplace=True)
-
-# Plots
-
-# Stacked Point Bar Chart
-fig1 = px.bar(standings,
-              x='Owner',
-              y='Points',
-              color='TeamName',
-              color_discrete_map=color_map,
-              title='Wins Pool Points',
-              barmode='stack',
-              text='TeamName')
-
-fig1.update_traces(texttemplate='%{text}', textposition='inside', showlegend=False)
-
-for i, owner in enumerate(total_points['Owner']):
-    total = total_points['TotalPoints'][i]
-    fig1.add_annotation(x=owner, y=total, text=str(total),
-                        showarrow=False, font=dict(color='black'), yshift=10)
-
-# Season Long Points Chart
-fig2 = px.line(gamelog_pivot,
-               x='GAME_DATE',
-               y=gamelog_pivot.columns[1:],
-               title='Wins Pool Points By Date')
-
-fig2.update_layout(xaxis_title='Date',
-                   yaxis_title='Points',
-                   legend={'title': {'text': 'Owner'}})
-
+# App Layout
 app.layout = html.Div(children=[
     html.H1(children='Hop Wei NBA Wins Pool 2023-2024', style={'textAlign': 'center'}),
 
@@ -264,13 +186,111 @@ app.layout = html.Div(children=[
     - Conference Finals and Finals max bet is 20 points per series
     '''),
 
-    dcc.Graph(
-        id='stacked-bar-graph',
-        figure=fig1
+    dcc.Interval(
+        id='interval-component',
+        interval=60 * 60 * 1000,  # in milliseconds, set to 24 hours
+        n_intervals=0
     ),
 
     dcc.Graph(
-        id='example-graph',
-        figure=fig2
+        id='point-totals'
+    ),
+
+    dcc.Graph(
+        id='point-totals-by-date'
     )
 ])
+
+# Interval Graph callbacks
+@callback(
+    Output('point-totals', 'figure'),
+    Input('interval-component', 'n_intervals')
+)
+def update_point_totals(n):
+    # Fetch NBA standings data
+    standings_full = endpoints.leaguestandings.LeagueStandings(proxy=proxy).get_data_frames()[0]
+
+    # Limit to relevant columns
+    col = ['TeamCity', 'TeamName', 'WINS', 'LOSSES']
+    standings = standings_full[col]
+
+    # Assign Wins Pool Owners
+    standings['Owner'] = standings['TeamName'].map(owner_map)
+
+    # Assign Wins Pool Owners
+    standings['O/U'] = standings['TeamName'].map(ou_map)
+
+    # Calculate Points Per Team
+    standings['Points'] = standings.apply(lambda row: row['WINS'] + 2 * max(row['WINS'] - row['O/U'], 0), axis=1)
+
+    # Drop Teams With No Owner
+    standings = standings[standings['Owner'] != 'N/A']
+
+    # Calculate Total Points Per Owner
+    total_points = standings.groupby(['Owner'])['Points'].sum().reset_index()
+    total_points.rename({'Points': 'TotalPoints'}, axis=1, inplace=True)
+    standings = standings.merge(total_points, on='Owner')
+
+    # Sort Standings
+    standings = standings.sort_values(by=['TotalPoints', 'Owner'], ascending=False)
+
+    # Stacked Point Bar Chart
+    fig = px.bar(standings,
+                 x='Owner',
+                 y='Points',
+                 color='TeamName',
+                 color_discrete_map=color_map,
+                 title='Wins Pool Points',
+                 barmode='stack',
+                 text='TeamName')
+
+    fig.update_traces(texttemplate='%{text}', textposition='inside', showlegend=False)
+
+    for i, owner in enumerate(total_points['Owner']):
+        total = total_points['TotalPoints'][i]
+        fig.add_annotation(x=owner, y=total, text=str(total),
+                           showarrow=False, font=dict(color='black'), yshift=10)
+
+    return fig
+
+
+@callback(
+    Output('point-totals-by-date', 'figure'),
+    Input('interval-component', 'n_intervals')
+)
+def update_points_by_date(n):
+    # Get gamelog
+    gamelog_full = endpoints.LeagueGameLog(proxy=proxy).get_data_frames()[0]
+    gamelog = gamelog_full[['TEAM_ABBREVIATION', 'GAME_DATE', 'WL']]
+
+    # Assign Wins Pool Owners
+    gamelog['Owner'] = gamelog['TEAM_ABBREVIATION'].map(owner_map_2)
+
+    # Wins Boolean
+    gamelog['WinMask'] = gamelog['WL'] == 'W'
+
+    # Change to Dates
+    gamelog['GAME_DATE'] = pd.to_datetime(gamelog['GAME_DATE'])
+
+    # Drop Teams With No Owner
+    gamelog = gamelog[gamelog['Owner'] != 'N/A']
+
+    # Pivot to get cumulative points
+    gamelog_pivot = gamelog.pivot_table(index='GAME_DATE',
+                                        columns='Owner', values='WinMask', aggfunc='sum').cumsum().reset_index()
+
+    # Fill NA
+    gamelog_pivot.fillna(method='ffill', inplace=True)
+    gamelog_pivot.fillna(0, inplace=True)
+
+    # Season Long Points Chart
+    fig = px.line(gamelog_pivot,
+                  x='GAME_DATE',
+                  y=gamelog_pivot.columns[1:],
+                  title='Wins Pool Points By Date')
+
+    fig.update_layout(xaxis_title='Date',
+                      yaxis_title='Points',
+                      legend={'title': {'text': 'Owner'}})
+
+    return fig
